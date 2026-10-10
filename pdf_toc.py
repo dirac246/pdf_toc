@@ -2,6 +2,7 @@
 #
 # brew install uv
 # uv venv
+#
 # source .venv/bin/activate
 # brew install pyenv
 # pyenv install 3.12
@@ -11,51 +12,80 @@
 # python -m ensurepip --default-pip
 # python -m pip install pymupdf
 #
-# python py_toc.py
+# python pdf_toc.py input_book.pdf toc_data.json --offset 16
 #
 
+import argparse
 import fitz
 import json
 import os
 
-# ==========================================
-# 設定エリア（ここを変更するだけ）
-# ==========================================
-input_pdf = "input_book.pdf"
-output_pdf = "output_book_with_toc.pdf"
-toc_json_file = "toc_data.json"  # 目次データファイルのパス
 
-# 本文の「1ページ目」が、実際のPDFで「何ページ目」にあるかのズレを指定
-# 例: PDFの1〜16ページ目が表紙や前書きで、17ページ目から本文が始まる場合は「16」
-page_offset = 16
-# ==========================================
+def main():
+    # コマンドライン引数の設定
+    parser = argparse.ArgumentParser(
+        description="PDFファイルにJSONから目次（しおり）を追加するスクリプト"
+    )
 
-# 1. 外部のJSONファイルが存在するか確認して読み込む
-if not os.path.exists(toc_json_file):
-    print(f"エラー: 目次ファイル '{toc_json_file}' が見つかりません。")
-    exit(1)
+    # 必須の引数
+    parser.add_argument(
+        "input_pdf", help="目次を追加したい元のPDFファイルのパス"
+    )
+    parser.add_argument("toc_json", help="目次データ（JSONファイル）のパス")
 
-with open(toc_json_file, "r", encoding="utf-8") as f:
-    toc_data = json.load(f)
+    # オプション引数（指定しない場合のデフォルト値を設定可能）
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="出力するPDFファイルのパス（省略時は '入力ファイル名_with_toc.pdf'）",
+    )
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="ページ番号のオフセット値（デフォルト: 0）",
+    )
 
-# 2. PDFを開く
-if not os.path.exists(input_pdf):
-    print(f"エラー: 元のPDFファイル '{input_pdf}' が見つかりません。")
-    exit(1)
+    args = parser.parse_args()
 
-doc = fitz.open(input_pdf)
-toc = []
+    # 出力ファイル名が省略された場合は自動生成
+    if args.output:
+        output_pdf = args.output
+    else:
+        base, ext = os.path.splitext(args.input_pdf)
+        output_pdf = f"{base}_with_toc{ext}"
 
-# 3. 読み込んだデータにオフセットを適用してPyMuPDFのフォーマットに変換
-for level, title, page in toc_data:
-    # JSONに記載されたページ番号に、指定されたオフセット値を加算
-    actual_page = page + page_offset
-    toc.append([level, title, actual_page])
+    # 1. 外部のJSONファイルが存在するか確認して読み込む
+    if not os.path.exists(args.toc_json):
+        print(f"エラー: 目次ファイル '{args.toc_json}' が見つかりません。")
+        exit(1)
 
-# 4. 目次（しおり）をPDFにセットして保存
-doc.set_toc(toc)
-doc.save(output_pdf)
-doc.close()
+    with open(args.toc_json, "r", encoding="utf-8") as f:
+        toc_data = json.load(f)
 
-print(f"PDFへの目次追加が完了しました！（オフセット: +{page_offset}ページ）")
-print(f"出力ファイル: {output_pdf}")
+    # 2. 入力PDFを開く
+    if not os.path.exists(args.input_pdf):
+        print(f"エラー: 元のPDFファイル '{args.input_pdf}' が見つかりません。")
+        exit(1)
+
+    doc = fitz.open(args.input_pdf)
+    toc = []
+
+    # 3. 読み込んだデータにオフセットを適用してPyMuPDFのフォーマットに変換
+    for level, title, page in toc_data:
+        actual_page = page + args.offset
+        toc.append([level, title, actual_page])
+
+    # 4. 目次（しおり）をPDFにセットして保存
+    doc.set_toc(toc)
+    doc.save(output_pdf)
+    doc.close()
+
+    print(
+        f"PDFへの目次追加が完了しました！（オフセット: +{args.offset}ページ）"
+    )
+    print(f"出力ファイル: {output_pdf}")
+
+
+if __name__ == "__main__":
+    main()
